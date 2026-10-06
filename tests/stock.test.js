@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {dispatch,stockFor} from '../src/stock.js';
+import {recordReview,recordRecovery} from '../src/sustainability.js';
+const base=[{id:'CAT-001',unit:'un',free:10,field:0}];
+const seed=()=>[{id:'MOB-001',status:'Planejada',items:[{id:'CAT-001',unit:'un',needed:8}],history:[]},{id:'MOB-002',status:'Planejada',items:[{id:'CAT-001',unit:'un',needed:5}],history:[]}];
+test('stock dispatch is limited and repeat dispatch cannot debit twice',()=>{const r=dispatch(seed(),'MOB-001',base,'Lucas','2026-10-06');assert.equal(stockFor(base,r)[0].free,2);assert.throws(()=>dispatch(r,'MOB-001',base,'Lucas','2026-10-06'));assert.throws(()=>dispatch(r,'MOB-002',base,'Lucas','2026-10-06'));});
+test('return and repair restore stock, then new dispatch records reuse without double debit',()=>{let r=dispatch(seed(),'MOB-001',base,'Lucas','2026-10-06');r=r.map(m=>m.id==='MOB-001'?{...m,status:'Concluída'}:m);r=recordReview(r,'MOB-001','CAT-001',{quantities:{reusable:3,repair:5,discard:0,waste:0,lost:0,consumed:0},unitCost:null,type:'Metais e cabos',date:'2026-10-06',responsible:'Lucas',notes:'',confirmed:true});assert.equal(stockFor(base,r)[0].free,5);r=recordRecovery(r,'MOB-001','CAT-001',{quantity:2,result:'recovered',date:'2026-10-06',responsible:'Lucas',notes:'Reparo aprovado',confirmed:true});assert.equal(stockFor(base,r)[0].free,7);r=dispatch(r,'MOB-002',base,'Lucas','2026-10-06');assert.equal(stockFor(base,r)[0].free,2);assert.equal(r[0].items[0].review.reuses[0].quantity,5);const reloaded=JSON.parse(JSON.stringify(r));assert.equal(stockFor(base,reloaded)[0].free,2);});

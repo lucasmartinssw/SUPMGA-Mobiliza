@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import RfidWorkspace from './RfidWorkspace.jsx';
 import Login, { readSession, clearSession } from './Login.jsx';
+import { CYCLE_KEY, readCycle, stockFor, dispatch } from './stock.js';
+import StockInventory from './StockInventory.jsx';
 import Mobilizations from './Mobilizations.jsx';
 import { MobilizationTriage, MobilizationDestinations, SustainabilityIndicators } from './SustainableCycle.jsx';
-import { recordReview, recordDisposal, recordReuse } from './sustainability.js';
-import { MOBILIZATIONS_KEY, readMobilizations, newMobilizationId, nextStatus } from './mobilizations.js';
+import { recordReview, recordDisposal, recordReuse, recordRecovery } from './sustainability.js';
+import { readMobilizations, newMobilizationId, nextStatus } from './mobilizations.js';
 
 const initialMaterials = [
   { id: 'CAT-001', name: 'Disjuntor monopolar 32 A', category: 'Proteção', unit: 'un', free: 4, field: 3, location: 'A1 · Prateleira 02', returnDate: '2026-09-24' },
@@ -70,10 +72,12 @@ export default function App() {
 }
 function Workspace({ user, onLogout }) {
   const [draft] = useState(readDraft);
-  const [materials, setMaterials] = useState(draft?.materials || initialMaterials);
+  const [cycle] = useState(readCycle);
+  const [baseMaterials, setBaseMaterials] = useState(cycle?.stock || draft?.materials || initialMaterials);
   const [plan, setPlan] = useState(draft?.plan || defaultPlan);
   const [page, setPage] = useState('Mobilizações');
-  const [mobilizations, setMobilizations] = useState(() => readMobilizations(draft, materials));
+  const [mobilizations, setMobilizations] = useState(() => readMobilizations(draft, baseMaterials, cycle?.records));
+  const materials = stockFor(baseMaterials,mobilizations);
   const [mobilizationId, setMobilizationId] = useState(draft ? (draft.mobilizationId || 'MOB-LEGADO') : 'MOB-001');
   const [dirty, setDirty] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -105,12 +109,13 @@ function Workspace({ user, onLogout }) {
     setMobilizationId(record.id); setValidated(false); setSaved(true); setDirty(false); setModal(null); go('Nova mobilização');
   });
   const persistMobilizations = records => {
-    try { localStorage.setItem(MOBILIZATIONS_KEY, JSON.stringify(records)); setMobilizations(records); return true; }
+    try { localStorage.setItem(CYCLE_KEY, JSON.stringify({version:2,stock:baseMaterials,records})); setMobilizations(records); return true; }
     catch { setToast('Não foi possível salvar: o armazenamento deste navegador está indisponível.'); return false; }
   };
   const updateStatus = (id, status) => {
     const record = mobilizations.find(m => m.id === id);
     if (!record || nextStatus[record.status] !== status) return false;
+    if(status==='Em mobilização') { try { return persistMobilizations(dispatch(mobilizations,id,baseMaterials,user.name,new Date().toLocaleDateString('en-CA'))); } catch(error){setToast(error.message);return false;} }
     const updated = persistMobilizations(mobilizations.map(m => m.id === id ? { ...m, status, history: [...m.history, { action: `Etapa alterada para ${status}`, date: new Date().toLocaleDateString('en-CA'), responsible: user.name }] } : m));
     if (updated && status === 'Concluída') { go('Retorno e triagem'); setToast('Obra concluída. Confira os materiais vinculados à mobilização.'); }
     return updated;
@@ -129,7 +134,7 @@ function Workspace({ user, onLogout }) {
     const record = { ...plan, id, status: 'Planejada', items: rows.map(m => ({ id: m.id, needed: m.needed, name: m.name, unit: m.unit })), history: [...(existing?.history || []), { action: existing ? 'Planejamento atualizado' : 'Planejamento criado', date: new Date().toLocaleDateString('en-CA'), responsible: user.name }] };
     if (!persistMobilizations(existing ? mobilizations.map(m => m.id === id ? record : m) : [record, ...mobilizations])) return;
     setMobilizationId(id); setSaved(true); setDirty(false);
-    try { localStorage.setItem(storageKey, JSON.stringify({ version: 1, plan, materials, mobilizationId: id })); }
+    try { localStorage.setItem(storageKey, JSON.stringify({ version: 1, plan, materials: baseMaterials, mobilizationId: id })); }
     catch { setToast(`${id} salva na lista, mas não foi possível atualizar o rascunho.`); return; }
     setToast(`${id} salva. Consulte todas as obras em Mobilizações.`);
   };
@@ -150,8 +155,9 @@ function Workspace({ user, onLogout }) {
 
       {page === 'Mobilizações' && <Mobilizations records={mobilizations} materials={materials} onCreate={createPlan} onEdit={editMobilization} onStatus={updateStatus} go={go} />}
       {page === 'Retorno e triagem' && <MobilizationTriage records={mobilizations} materials={materials} onReview={(...args) => applyCycle(recordReview,...args)} onReuse={(...args) => applyCycle(recordReuse,...args)} user={user} go={go} />}
-      {page === 'Destinação sustentável' && <MobilizationDestinations records={mobilizations} materials={materials} onDispose={(...args) => applyCycle(recordDisposal,...args)} user={user} />}
+      {page === 'Destinação sustentável' && <MobilizationDestinations records={mobilizations} materials={materials} onDispose={(...args) => applyCycle(recordDisposal,...args)} onRecovery={(...args)=>applyCycle(recordRecovery,...args)} user={user} />}
       {page === 'Indicadores' && <SustainabilityIndicators records={mobilizations} materials={materials} />}
+      {page === 'Inventário' && <StockInventory materials={materials} onEntry={(id,quantity,responsible,date) => { const updated=baseMaterials.map(m=>m.id===id?{...m,free:m.free+quantity,entries:[...(m.entries||[]),{quantity,responsible,date}]}:m); try { localStorage.setItem(CYCLE_KEY,JSON.stringify({version:2,stock:updated,records:mobilizations}));setBaseMaterials(updated);setToast('Entrada registrada no estoque.');return true;}catch{setToast('Não foi possível salvar a entrada.');return false;} }} user={user} />}
       <RfidWorkspace page={page} go={go} integratedCycle />
       {page === 'Nova mobilização' && <>
         <div className="planning-toolbar"><button className="text-button" onClick={() => go('Mobilizações')}>← Todas as mobilizações</button><span>{mobilizationId || 'Nova mobilização'} · {plan.items.length} tipos de materiais</span></div>
@@ -159,7 +165,7 @@ function Workspace({ user, onLogout }) {
         <section className="card materials-card"><div className="section-heading"><div className="section-title"><span className="step">02</span><h2>Materiais necessários <span className="count">{rows.length}</span></h2></div><button className="button secondary small" onClick={() => { setAddQuery(''); setModal({ type: 'add' }); }}><Icon name="plus" size={16} />Adicionar material</button></div><div className={`table-scroll ${validated ? 'validated-plan' : 'pending-plan'}`}><table className="planning-table"><thead><tr><th>Material</th><th>Necessário</th><th>Livre agora</th><th>Em outro contrato</th><th>Retorno previsto</th><th>Falta agora</th><th>Avaliação</th><th /></tr></thead><tbody>{rows.map(m => <tr key={m.id}><td><button className="material-link" onClick={() => setModal({ type: 'detail', material: m })}>{m.name}</button><small>{m.id} <span className="dot-separator">·</span> {m.category}</small></td><td><div className="quantity"><input aria-label={`Quantidade necessária de ${m.name}`} type="number" min="0" step={m.unit === 'm' ? '0.01' : '1'} value={m.needed} onChange={e => { const value = Number(e.target.value); if (Number.isFinite(value) && value >= 0) edit({ items: plan.items.map(i => i.id === m.id ? { ...i, needed: m.unit === 'un' ? Math.floor(value) : Math.round(value * 100) / 100 } : i) }); }} /><span>{m.unit}</span></div></td><td><span className="free-value">{amount(m.free)} <small>{m.unit}</small></span></td><td>{m.field} {m.unit}</td><td>{date(m.returnDate)}</td><td><span className={`pill ${m.needed > m.free ? 'orange' : 'green'}`}>{m.needed > m.free && <span className="tiny-dot" />}{amount(Math.max(0, Math.round((m.needed - m.free) * 100) / 100))} {m.unit}</span></td><td><span className="pill neutral">{m.category === 'Cabos' ? 'Web Supply-PMA' : 'Compra direta'} · avaliar</span></td><td><button className="icon-button delete" aria-label={`Remover ${m.name}`} onClick={() => edit({ items: plan.items.filter(i => i.id !== m.id) })}><Icon name="trash" size={16} /></button></td></tr>)}</tbody></table>{!rows.length && <div className="empty">Adicione materiais para começar seu planejamento.</div>}</div><div className="table-note"><Icon name="clock" size={16} /><span>A disponibilidade considera apenas os materiais <strong>livres agora.</strong></span></div></section>
         <div className="info-banner"><span className="info-circle">i</span><div><strong>Previsão de retorno não é disponibilidade confirmada.</strong><p>Materiais em campo precisam retornar e passar pela triagem antes de ficarem livres. Classes simuladas: Cabos → Web Supply-PMA; demais → Compra direta, somente para avaliação. Nenhuma compra é realizada.</p></div></div>
         <div className="planning-validation"><label className="checkbox-label"><input type="checkbox" checked={validated} onChange={e => setValidated(e.target.checked)} />Confirmo que revisei os materiais e as quantidades</label><p>{validated ? 'Lista validada. Consulte saldos, previsões e faltas abaixo.' : 'Revise os materiais e valide a lista para consultar a disponibilidade e salvar.'}</p></div><div className="planning-actions"><span><Icon name="save" size={16} />{saved ? 'Planejamento salvo neste navegador' : 'Salve para incluir na lista de mobilizações'}</span><button className="button primary" onClick={save}><Icon name="save" size={18} />Salvar planejamento</button></div>
-        </div><aside className="right-panel"><section className="card inventory-summary"><div className="section-heading"><h2>Cenário de planejamento</h2><Icon name="box" /></div>{demo}<div className="summary-total"><strong>{materials.length.toString().padStart(2, '0')}</strong><span>classes de materiais<br />no cenário fictício</span></div><div className="stock-stat"><span><span className="tiny-dot green-dot" />Livres · unidades</span><strong>{amount(totals('un'))} <small>un</small></strong></div><div className="stock-stat"><span><span className="tiny-dot green-dot" />Livres · cabos</span><strong>{amount(totals('m'))} <small>m</small></strong></div><button className="text-button summary-link" onClick={() => go('Inventário')}>Consultar equipamentos<Icon name="arrow" size={17} /></button></section>
+        </div><aside className="right-panel"><section className="card inventory-summary"><div className="section-heading"><h2>Estoque para planejamento</h2><Icon name="box" /></div>{demo}<div className="summary-total"><strong>{materials.length.toString().padStart(2, '0')}</strong><span>classes de materiais<br />no estoque demonstrativo</span></div><div className="stock-stat"><span><span className="tiny-dot green-dot" />Livres · unidades</span><strong>{amount(totals('un'))} <small>un</small></strong></div><div className="stock-stat"><span><span className="tiny-dot green-dot" />Livres · cabos</span><strong>{amount(totals('m'))} <small>m</small></strong></div><button className="text-button summary-link" onClick={() => go('Inventário')}>Consultar equipamentos<Icon name="arrow" size={17} /></button></section>
         <section className="card alerts-card"><div className="section-heading"><h2><Icon name="alert" size={18} />Pontos de atenção</h2><span className="count alert-count">{shortages.length}</span></div>{shortages.length ? shortages.map(m => <div className="alert-item" key={m.id}><span className="alert-dot" /><div><strong>{m.name}</strong><p>Faltam <b>{amount(Math.round((m.needed - m.free) * 100) / 100)} {m.unit}</b> para esta mobilização.</p>{m.field > 0 && <small>{m.field} {m.unit} em campo · retorno {date(m.returnDate)}{m.returnDate > plan.start && <em>Após o início da obra</em>}</small>}</div></div>) : <div className="success-note">Todos os materiais selecionados têm saldo livre suficiente.</div>}<div className="alert-footer">Revise as faltas antes de mobilizar.</div></section>
         <div className="how-it-works"><span className="eyebrow">COMO LER O PLANEJAMENTO</span><p><span className="legend-dot green-dot" /><strong>Livre agora</strong>Disponível no almoxarifado</p><p><span className="legend-dot orange-dot" /><strong>Falta agora</strong>Necessário menos saldo livre</p></div></aside></div>
       </>}

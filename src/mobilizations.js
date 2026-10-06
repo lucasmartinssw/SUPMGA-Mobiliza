@@ -6,10 +6,10 @@ const seeds = [
   { id: 'MOB-002', work: 'Manutenção preventiva · Centro', start: '2026-10-05', end: '2026-10-12', responsible: 'João Pedro Medeiros', status: 'Em mobilização', items: [{ id: 'CAT-004', needed: 4 }, { id: 'CAT-005', needed: 8 }], history: [] },
   { id: 'MOB-003', work: 'Adequação de rede · Vila Reis', start: '2026-09-14', end: '2026-09-18', responsible: 'Caio Dias', status: 'Concluída', items: [{ id: 'CAT-002', needed: 6 }], history: [] },
 ];
-export function readMobilizations(draft, materials = []) {
+export function readMobilizations(draft, materials = [], override) {
   let records;
   try {
-    const saved = JSON.parse(localStorage.getItem(MOBILIZATIONS_KEY));
+    const saved = override || JSON.parse(localStorage.getItem(MOBILIZATIONS_KEY));
     if (Array.isArray(saved) && saved.every(m => m && ['id', 'work', 'start', 'end', 'responsible'].every(k => typeof m[k] === 'string') && statuses.includes(m.status) && Array.isArray(m.items) && m.items.every(i => i && typeof i.id === 'string' && Number.isFinite(i.needed) && i.needed >= 0) && Array.isArray(m.history) && m.history.every(e => e && ['action', 'date', 'responsible'].every(k => typeof e[k] === 'string'))) && new Set(saved.map(m => m.id)).size === saved.length) records = saved;
   } catch { /* Keep the demo usable when browser storage is unavailable. */ }
   if (!records) records = seeds.map(m => ({ ...m, items: m.items.map(i => ({ ...i })), history: [] }));
