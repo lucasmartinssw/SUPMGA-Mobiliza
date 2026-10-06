@@ -9,7 +9,7 @@ npm run dev
 
 Abra o endereço exibido pelo Vite. Para gerar a versão de produção: `npm run build`.
 
-A tela inicial é **Nova mobilização**. O menu inclui **Identificação e movimentações**, Inventário, Cadastro, Visão geral, Retorno e triagem, Indicadores e Configuração.
+Após o login, a tela inicial é **Mobilizações**. O menu inclui **Identificação e movimentações**, Inventário, Cadastro, Visão geral, Retorno e triagem, Indicadores e Configuração.
 
 ## Roteiro de identificação e movimentações
 
@@ -53,3 +53,12 @@ Pontos de segregação e destinos são fictícios: metais e cabos, eletroeletrô
 
 
 Na destinação, a classificação é sugerida automaticamente a partir de `tipoMaterial` do cadastro, quando válido, ou de palavras reconhecidas na descrição/categoria. Disjuntores sugerem eletroeletrônicos; metais/cabos e plásticos têm sugestões próprias. Referências explícitas a óleo/contaminação na descrição direcionam à avaliação especializada. O operador pode corrigir a sugestão, que não substitui a avaliação da condição física. Materiais não reconhecidos continuam exigindo seleção manual.
+
+
+## Todas as mobilizações e navegação
+
+Após o login, **Mobilizações** lista obras, códigos, responsáveis, datas, materiais e etapa. Busque por obra/código/responsável, filtre por etapa ou prazo vencido e ordene por início, retorno ou nome. Os cartões de resumo também aplicam filtros. **Ver detalhes** mostra os materiais e o histórico; planejamentos ainda na etapa Planejada podem ser editados.
+
+**Nova mobilização** abre um planejamento vazio. Adicione materiais com quantidades positivas, revise as datas e confirme a revisão da lista antes de salvar. Cada nova mobilização recebe um código próprio; editar e salvar atualiza a mesma mobilização. A lista persiste em `supmgamobiliza-mobilizations-v1` no navegador. O antigo planejamento salvo é preservado como MOB-LEGADO quando ainda não possui vínculo. Não há compartilhamento entre navegadores ou usuários.
+
+O acompanhamento demonstrativo permite avançar de Planejada para Em mobilização, Aguardando retorno e Concluída, com confirmação e histórico. Essa etapa não altera estoque, registra saída física ou certifica devoluções; as fichas individuais continuam com seu fluxo próprio. Os cenários iniciais incluem três mobilizações fictícias. Quantidades em metros e unidades são apresentadas separadamente. Alterações não salvas são protegidas antes de abrir outro planejamento. A interface inclui atalhos para inventário/triagem/destinos, foco no título ao navegar, link para pular o menu, estados vazios e layouts para celular.
