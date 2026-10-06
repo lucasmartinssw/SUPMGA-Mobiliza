@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import RfidWorkspace from './RfidWorkspace.jsx';
 import Login, { readSession, clearSession } from './Login.jsx';
 import Mobilizations from './Mobilizations.jsx';
+import { MobilizationTriage, MobilizationDestinations, SustainabilityIndicators } from './SustainableCycle.jsx';
+import { recordReview, recordDisposal, recordReuse } from './sustainability.js';
 import { MOBILIZATIONS_KEY, readMobilizations, newMobilizationId, nextStatus } from './mobilizations.js';
 
 const initialMaterials = [
@@ -71,7 +73,7 @@ function Workspace({ user, onLogout }) {
   const [materials, setMaterials] = useState(draft?.materials || initialMaterials);
   const [plan, setPlan] = useState(draft?.plan || defaultPlan);
   const [page, setPage] = useState('Mobilizações');
-  const [mobilizations, setMobilizations] = useState(() => readMobilizations(draft));
+  const [mobilizations, setMobilizations] = useState(() => readMobilizations(draft, materials));
   const [mobilizationId, setMobilizationId] = useState(draft ? (draft.mobilizationId || 'MOB-LEGADO') : 'MOB-001');
   const [dirty, setDirty] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -109,7 +111,13 @@ function Workspace({ user, onLogout }) {
   const updateStatus = (id, status) => {
     const record = mobilizations.find(m => m.id === id);
     if (!record || nextStatus[record.status] !== status) return false;
-    return persistMobilizations(mobilizations.map(m => m.id === id ? { ...m, status, history: [...m.history, { action: `Etapa alterada para ${status}`, date: new Date().toLocaleDateString('en-CA'), responsible: user.name }] } : m));
+    const updated = persistMobilizations(mobilizations.map(m => m.id === id ? { ...m, status, history: [...m.history, { action: `Etapa alterada para ${status}`, date: new Date().toLocaleDateString('en-CA'), responsible: user.name }] } : m));
+    if (updated && status === 'Concluída') { go('Retorno e triagem'); setToast('Obra concluída. Confira os materiais vinculados à mobilização.'); }
+    return updated;
+  };
+  const applyCycle = (operation, ...args) => {
+    try { const updated = operation(mobilizations, ...args); if (!persistMobilizations(updated)) return false; setToast('Registro salvo com rastreabilidade da mobilização.'); return true; }
+    catch (error) { setToast(error.message); return false; }
   };
   const save = () => {
     if (!formRef.current.reportValidity()) return;
@@ -127,11 +135,11 @@ function Workspace({ user, onLogout }) {
   };
   const addMaterial = m => { edit({ items: [...plan.items, { id: m.id, needed: 1 }] }); setToast(`${m.name} adicionado ao planejamento.`); };
   const demo = <span className="demo-label"><span />Dados de demonstração</span>;
-  const titleDescriptions = { 'Mobilizações': 'Todas as obras em um lugar. Consulte materiais, prazos e o andamento de cada mobilização.', 'Destinação sustentável': 'Consulte locais compatíveis e planeje o encaminhamento dos materiais não reutilizáveis.', 'Identificação e movimentações': 'Localize pela etiqueta atual e registre eventos na mesma ficha; RFID é opcional.', 'Retorno e triagem': 'Receba os materiais, avalie a condição e confirme o próximo passo.', 'Configuração': 'Requisitos para um piloto futuro de RFID físico.', 'Nova mobilização': 'Planeje os materiais da obra e antecipe o que precisa de atenção.', 'Visão geral': 'Uma visão do seu inventário e do próximo planejamento.', 'Inventário': 'Consulte materiais, disponibilidade atual e localização.', 'Cadastrar material': 'Adicione um material ao inventário de demonstração.', 'Saídas': 'Acompanhe os materiais planejados para ir a campo.', 'Retornos': 'Consulte previsões de retorno e simule o recebimento.', 'Triagem': 'Simule a conferência dos materiais que retornaram.', 'Indicadores': 'Explore os números do inventário de demonstração.' };
+  const titleDescriptions = { 'Mobilizações': 'Todas as obras em um lugar. Consulte materiais, prazos e o andamento de cada mobilização.', 'Destinação sustentável': 'Consulte locais compatíveis e planeje o encaminhamento dos materiais não reutilizáveis.', 'Identificação e movimentações': 'Localize pela etiqueta atual e registre eventos na mesma ficha; RFID é opcional.', 'Retorno e triagem': 'Receba os materiais, avalie a condição e confirme o próximo passo.', 'Configuração': 'Requisitos para um piloto futuro de RFID físico.', 'Nova mobilização': 'Planeje os materiais da obra e antecipe o que precisa de atenção.', 'Visão geral': 'Uma visão do seu inventário e do próximo planejamento.', 'Inventário': 'Consulte materiais, disponibilidade atual e localização.', 'Cadastrar material': 'Adicione um material ao inventário de demonstração.', 'Saídas': 'Acompanhe os materiais planejados para ir a campo.', 'Retornos': 'Consulte previsões de retorno e simule o recebimento.', 'Triagem': 'Simule a conferência dos materiais que retornaram.', 'Indicadores': 'Acompanhe reuso, perdas, desperdício, destinação e compras evitadas a partir dos registros.' };
   return <div className="app-shell"><a className="skip-link" href="#main-content">Ir para o conteúdo</a>
     {menuOpen && <button className="sidebar-backdrop" onClick={() => setMenuOpen(false)} aria-label="Fechar menu" />}
     <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
-      <div className="brand"><span className="brand-mark"><Icon name="layers" size={27} /></span><div><strong>SUPMGA<span>Mobiliza</span></strong><small>GESTÃO DE MATERIAIS</small></div></div>
+      <div className="brand brand-logo"><img src="/logo.png" alt="SUPMGA Mobiliza — controle sustentável de materiais" /></div>
       <div className="workspace"><span className="workspace-icon"><Icon name="box" /></span><div><strong>Almoxarifado central</strong><small>Ambiente de demonstração</small></div></div>
       <p className="nav-label">PRINCIPAL</p>
       <nav aria-label="Menu principal">{navigation.map(([label, icon], i) => <React.Fragment key={label}>{label === 'Identificação e movimentações' && <p className="nav-label operations-label">MOVIMENTAÇÕES</p>}{label === 'Indicadores' && <p className="nav-label operations-label">ACOMPANHAMENTO</p>}<button className={`nav-item ${page === label ? 'active' : ''} `} onClick={() => label === 'Nova mobilização' ? createPlan() : go(label)} aria-label={label} aria-current={page === label ? 'page' : undefined}><Icon name={icon} /><span>{label}</span>{page === label && <span className="active-dot" />}</button></React.Fragment>)}</nav>
@@ -141,7 +149,10 @@ function Workspace({ user, onLogout }) {
       <main id="main-content"><div className="page-heading"><div><div className="eyebrow">{page === 'Nova mobilização' ? 'PLANEJAMENTO DE OBRA' : 'GESTÃO E ACOMPANHAMENTO'}</div><h1 ref={headingRef} tabIndex={-1}>{page === 'Nova mobilização' && mobilizationId ? 'Planejar mobilização' : page}</h1><p>{titleDescriptions[page]}</p></div>{page === 'Nova mobilização' ? <span className="draft-label"><span />{saved ? `${mobilizationId || 'Planejamento'} · Salvo` : 'Alterações não salvas'}</span> : demo}</div>
 
       {page === 'Mobilizações' && <Mobilizations records={mobilizations} materials={materials} onCreate={createPlan} onEdit={editMobilization} onStatus={updateStatus} go={go} />}
-      <RfidWorkspace page={page} go={go} />
+      {page === 'Retorno e triagem' && <MobilizationTriage records={mobilizations} materials={materials} onReview={(...args) => applyCycle(recordReview,...args)} onReuse={(...args) => applyCycle(recordReuse,...args)} user={user} go={go} />}
+      {page === 'Destinação sustentável' && <MobilizationDestinations records={mobilizations} materials={materials} onDispose={(...args) => applyCycle(recordDisposal,...args)} user={user} />}
+      {page === 'Indicadores' && <SustainabilityIndicators records={mobilizations} materials={materials} />}
+      <RfidWorkspace page={page} go={go} integratedCycle />
       {page === 'Nova mobilização' && <>
         <div className="planning-toolbar"><button className="text-button" onClick={() => go('Mobilizações')}>← Todas as mobilizações</button><span>{mobilizationId || 'Nova mobilização'} · {plan.items.length} tipos de materiais</span></div>
         <div className="planning-layout"><div className="planning-main"><section className="card"><div className="section-heading"><div className="section-title"><span className="step">01</span><h2>Dados da mobilização</h2></div><span className="subtle">Todos os campos são obrigatórios</span></div><form ref={formRef} className="planning-form" onSubmit={e => e.preventDefault()}><label className="full">Obra / projeto<input value={plan.work} onChange={e => edit({ work: e.target.value })} required pattern=".*\S.*" placeholder="Nome da obra ou projeto" /></label><label>Data de início<input type="date" value={plan.start} onChange={e => edit({ start: e.target.value })} required /></label><label>Retorno previsto<input type="date" min={plan.start} value={plan.end} onChange={e => edit({ end: e.target.value })} required /></label><label className="full">Responsável<input value={plan.responsible} onChange={e => edit({ responsible: e.target.value })} required pattern=".*\S.*" placeholder="Nome do responsável" /></label></form></section>
@@ -153,7 +164,6 @@ function Workspace({ user, onLogout }) {
         <div className="how-it-works"><span className="eyebrow">COMO LER O PLANEJAMENTO</span><p><span className="legend-dot green-dot" /><strong>Livre agora</strong>Disponível no almoxarifado</p><p><span className="legend-dot orange-dot" /><strong>Falta agora</strong>Necessário menos saldo livre</p></div></aside></div>
       </>}
 
-      {page === 'Indicadores' && <><div className="metric-grid">{[[materials.length, 'Tipos de materiais', 'box'], [`${amount(totals('un'))} un`, 'Unidades livres agora', 'check'], [`${amount(totals('m'))} m`, 'Metros de cabo livres', 'layers'], [shortages.length, 'Itens com falta no plano', 'alert']].map(([value, label, icon]) => <section className="card metric" key={label}><div><Icon name={icon} />{demo}</div><strong>{value}</strong><p>{label}</p></section>)}</div><div className="overview-grid"><section className="card"><div className="section-heading"><h2>{page === 'Indicadores' ? 'Disponibilidade por classe · cenário fictício' : 'Disponibilidade do almoxarifado'}</h2></div><div className="bar-list">{materials.map(m => <div className="bar-row" key={m.id}><div><button className="material-link" onClick={() => setModal({ type: 'detail', material: m })}>{m.name}</button><span>{m.free} {m.unit} livres / {m.free + m.field} {m.unit} no total</span></div><div className="bar-track"><span style={{ width: `${m.free + m.field ? m.free / (m.free + m.field) * 100 : 0}%` }} /></div></div>)}</div><div className="table-note">Cenário agregado de planejamento (CAT). As fichas individuais (MAT) são demonstradas separadamente. Quantidades não somam unidades distintas.</div></section><section className="card plan-preview"><span className="eyebrow">PLANEJAMENTO ATUAL</span><Icon name="layers" size={35} /><h2>{plan.work || 'Mobilização sem título'}</h2><p>{date(plan.start)} → {date(plan.end)}</p><div className="preview-stat"><span>Materiais no plano</span><strong>{rows.length}</strong></div><div className="preview-stat"><span>Itens com falta</span><strong className="orange-text">{shortages.length}</strong></div><button className="button primary" onClick={() => go('Nova mobilização')}>Abrir planejamento<Icon name="arrow" size={17} /></button></section></div></>}
 
       <footer className="page-footer"><span>SUPMGAMobiliza <span className="dot-separator">·</span> Uma ficha. A mesma identidade em todo o ciclo.</span><span>Dados de demonstração</span></footer>
       </main>
