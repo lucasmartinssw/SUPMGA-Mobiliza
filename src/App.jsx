@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import RfidWorkspace from './RfidWorkspace.jsx';
+import Login, { readSession, clearSession } from './Login.jsx';
 
 const initialMaterials = [
   { id: 'CAT-001', name: 'Disjuntor monopolar 32 A', category: 'Proteção', unit: 'un', free: 4, field: 3, location: 'A1 · Prateleira 02', returnDate: '2026-09-24' },
@@ -11,7 +12,7 @@ const initialMaterials = [
 ];
 const defaultPlan = { work: 'Ampliação de rede · Jardim das Flores', start: '2026-09-21', end: '2026-10-02', responsible: 'Lucas Silva', items: [{ id: 'CAT-001', needed: 10 }, { id: 'CAT-002', needed: 20 }, { id: 'CAT-003', needed: 100 }] };
 const storageKey = 'supmgamobiliza-draft-v1';
-const navigation = [ ['Visão geral', 'dashboard'], ['Inventário', 'box'], ['Cadastrar material', 'plusbox'], ['Nova mobilização', 'layers'], ['Identificação e movimentações', 'search'], ['Retorno e triagem', 'check'], ['Indicadores', 'chart'], ['Configuração', 'check'] ];
+const navigation = [ ['Visão geral', 'dashboard'], ['Inventário', 'box'], ['Cadastrar material', 'plusbox'], ['Nova mobilização', 'layers'], ['Identificação e movimentações', 'search'], ['Retorno e triagem', 'check'], ['Destinação sustentável', 'return'], ['Indicadores', 'chart'], ['Configuração', 'check'] ];
 const paths = {
   dashboard: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
   box: 'm12 3 9 5v8l-9 5-9-5V8z M3 8l9 5 9-5 M12 13v8 M7.5 5.5l9 5',
@@ -59,6 +60,11 @@ function Modal({ title, onClose, children }) {
 }
 
 export default function App() {
+  const [user, setUser] = useState(readSession);
+  if (!user) return <Login onLogin={setUser} />;
+  return <Workspace user={user} onLogout={() => { clearSession(); setUser(null); }} />;
+}
+function Workspace({ user, onLogout }) {
   const [draft] = useState(readDraft);
   const [materials, setMaterials] = useState(draft?.materials || initialMaterials);
   const [plan, setPlan] = useState(draft?.plan || defaultPlan);
@@ -85,7 +91,7 @@ export default function App() {
   };
   const addMaterial = m => { edit({ items: [...plan.items, { id: m.id, needed: 1 }] }); setToast(`${m.name} adicionado ao planejamento.`); };
   const demo = <span className="demo-label"><span />Dados de demonstração</span>;
-  const titleDescriptions = { 'Identificação e movimentações': 'Localize pela etiqueta atual e registre eventos na mesma ficha; RFID é opcional.', 'Retorno e triagem': 'Receba, confira e libere equipamentos preservando o número interno.', 'Configuração': 'Requisitos para um piloto futuro de RFID físico.', 'Nova mobilização': 'Planeje os materiais da obra e antecipe o que precisa de atenção.', 'Visão geral': 'Uma visão do seu inventário e do próximo planejamento.', 'Inventário': 'Consulte materiais, disponibilidade atual e localização.', 'Cadastrar material': 'Adicione um material ao inventário de demonstração.', 'Saídas': 'Acompanhe os materiais planejados para ir a campo.', 'Retornos': 'Consulte previsões de retorno e simule o recebimento.', 'Triagem': 'Simule a conferência dos materiais que retornaram.', 'Indicadores': 'Explore os números do inventário de demonstração.' };
+  const titleDescriptions = { 'Destinação sustentável': 'Consulte locais compatíveis e planeje o encaminhamento dos materiais não reutilizáveis.', 'Identificação e movimentações': 'Localize pela etiqueta atual e registre eventos na mesma ficha; RFID é opcional.', 'Retorno e triagem': 'Receba, confira e libere equipamentos preservando o número interno.', 'Configuração': 'Requisitos para um piloto futuro de RFID físico.', 'Nova mobilização': 'Planeje os materiais da obra e antecipe o que precisa de atenção.', 'Visão geral': 'Uma visão do seu inventário e do próximo planejamento.', 'Inventário': 'Consulte materiais, disponibilidade atual e localização.', 'Cadastrar material': 'Adicione um material ao inventário de demonstração.', 'Saídas': 'Acompanhe os materiais planejados para ir a campo.', 'Retornos': 'Consulte previsões de retorno e simule o recebimento.', 'Triagem': 'Simule a conferência dos materiais que retornaram.', 'Indicadores': 'Explore os números do inventário de demonstração.' };
   return <div className="app-shell">
     {menuOpen && <button className="sidebar-backdrop" onClick={() => setMenuOpen(false)} aria-label="Fechar menu" />}
     <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
@@ -93,7 +99,7 @@ export default function App() {
       <div className="workspace"><span className="workspace-icon"><Icon name="box" /></span><div><strong>Almoxarifado central</strong><small>Ambiente de demonstração</small></div></div>
       <p className="nav-label">PRINCIPAL</p>
       <nav aria-label="Menu principal">{navigation.map(([label, icon], i) => <React.Fragment key={label}>{i === 4 && <p className="nav-label operations-label">MOVIMENTAÇÕES</p>}{i === 7 && <p className="nav-label operations-label">ACOMPANHAMENTO</p>}<button className={`nav-item ${page === label ? 'active' : ''} ${label === 'Identificação e movimentações' ? 'rfid-nav' : ''}`} onClick={() => go(label)} aria-label={label} aria-current={page === label ? 'page' : undefined}><Icon name={icon} /><span>{label}</span>{page === label && <span className="active-dot" />}</button></React.Fragment>)}</nav>
-      <div className="sidebar-bottom"><div className="prototype-note"><Icon name="layers" /><div><strong>Planejar para mobilizar.</strong><p>Mais visibilidade em cada etapa da sua obra.</p></div></div><div className="profile"><span className="avatar">LS</span><div><strong>Lucas Silva</strong><small>Planejamento · demonstração</small></div><span className="online-dot" /></div></div>
+      <div className="sidebar-bottom"><div className="prototype-note"><Icon name="layers" /><div><strong>Planejar para mobilizar.</strong><p>Mais visibilidade em cada etapa da sua obra.</p></div></div><div className="profile"><span className="avatar">LM</span><div><strong>{user.name}</strong><small>{user.role}</small></div></div><button className="button secondary logout-button" onClick={onLogout}>Sair do sistema</button></div>
     </aside>
     <div className="main-shell"><header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Abrir menu" onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><span>Gestão de materiais</span><span className="breadcrumb-divider">/</span><strong>{page}</strong></div><span className="environment"><span />Protótipo com dados fictícios</span></header>
       <main><div className="page-heading"><div><div className="eyebrow">{page === 'Nova mobilização' ? 'PLANEJAMENTO DE OBRA' : 'GESTÃO E ACOMPANHAMENTO'}</div><h1>{page}</h1><p>{titleDescriptions[page]}</p></div>{page === 'Nova mobilização' ? <span className="draft-label"><span />{saved ? 'Rascunho salvo' : 'Em planejamento'}</span> : demo}</div>
@@ -119,3 +125,4 @@ export default function App() {
     {modal?.type === 'add' && <Modal title="Adicionar material" onClose={() => setModal(null)}><div className="add-body"><p className="subtle">Selecione materiais do inventário para sua mobilização.</p><label className="search-input"><Icon name="search" size={18} /><input autoFocus aria-label="Buscar material para adicionar" placeholder="Buscar material..." value={addQuery} onChange={e => setAddQuery(e.target.value)} /></label><div className="add-list">{materials.filter(m => matches(m, addQuery)).map(m => <div className="add-item" key={m.id}><span className="material-icon"><Icon name="box" /></span><div><strong>{m.name}</strong><small>{m.id} · {m.free} {m.unit} livres agora</small></div><button className="button secondary small" disabled={plan.items.some(i => i.id === m.id)} onClick={() => addMaterial(m)}>{plan.items.some(i => i.id === m.id) ? 'Adicionado' : 'Adicionar'}</button></div>)}{!materials.some(m => matches(m, addQuery)) && <div className="empty">Nenhum material encontrado.</div>}</div><div className="form-actions"><button className="button primary" onClick={() => setModal(null)}>Concluir seleção</button></div></div></Modal>}
   </div>;
 }
+
