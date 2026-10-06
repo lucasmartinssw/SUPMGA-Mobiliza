@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import Disposal, { disposalTypes } from './Disposal.jsx';
+import TriageWorkspace from './TriageWorkspace.jsx';
 
 const KEY = 'supmgamobiliza-rfid-v1';
 const today = () => new Date().toLocaleDateString('en-CA');
@@ -106,14 +107,24 @@ export default function RfidWorkspace({ page, go }) {
     change(material.idInterno, updates, { tipo: eventType, data: data.get('data'), origem: material.localizacao, destino: destination, contrato: eventType === 'Retorno ao galpão' || eventType === 'Conferência em campo' ? material.contratoAtual : contract, responsavel: responsible });
     setMessage(`${eventType} registrado na mesma ficha ${material.idInterno}.`);
   };
+  const finishTriage = (item, data) => {
+    const condition = data.condicao;
+    const current = equipment.find(m => m.idInterno === item.idInterno);
+    if (!current || current.status !== 'Aguardando triagem' || !['Apto', 'Danificado', 'Perdido', 'Manutenção', 'Não reutilizável'].includes(condition) || !data.responsavel.trim() || !data.data || (condition === 'Não reutilizável' && !disposalTypes.includes(data.tipoDescarte))) return false;
+    change(current.idInterno, { condicao: condition, status: condition === 'Apto' ? 'Livre' : condition === 'Não reutilizável' ? 'Aguardando destinação' : condition, tipoDescarte: condition === 'Não reutilizável' ? data.tipoDescarte : '', contratoAtual: '' }, { tipo: `Triagem conferida: ${condition}`, data: data.data, origem: current.localizacao, destino: current.localizacao, contrato: '', responsavel: data.responsavel.trim() });
+    if (condition === 'Não reutilizável') { setDisposalId(current.idInterno); setSelected(null); go('Destinação sustentável'); }
+    return true;
+  };
   const triage = e => {
     e.preventDefault();
-    const data = new FormData(e.currentTarget);
-    const condition = data.get('condicao');
-    if (material.status !== 'Aguardando triagem') { setMessage('Registre o retorno antes de conferir este material.'); return; }
-    change(material.idInterno, { condicao: condition, status: condition === 'Apto' ? 'Livre' : condition === 'Não reutilizável' ? 'Aguardando destinação' : condition, tipoDescarte: condition === 'Não reutilizável' ? data.get('tipoDescarte') : '', contratoAtual: '' }, { tipo: `Triagem conferida: ${condition}`, data: data.get('data'), origem: material.localizacao, destino: material.localizacao, contrato: '', responsavel: data.get('responsavel').trim() });
-    if (condition === 'Não reutilizável') { setDisposalId(material.idInterno); setSelected(null); go('Destinação sustentável'); return; }
-    setMessage(`Conferência demonstrativa concluída. ${material.idInterno} preservado; status: ${condition === 'Apto' ? 'Livre' : condition}.`);
+    if (finishTriage(material, Object.fromEntries(new FormData(e.currentTarget)))) setMessage('Conferência concluída. A ficha e o histórico foram preservados.');
+    else setMessage('Confira a condição e os dados antes de concluir a triagem.');
+  };
+  const receiveMaterial = (item, data) => {
+    const current = equipment.find(m => m.idInterno === item.idInterno);
+    if (!current || current.status !== 'Em contrato' || !data.destino.trim() || !data.responsavel.trim() || !data.data) return false;
+    change(current.idInterno, { localizacao: data.destino.trim(), contratoAtual: '', status: 'Aguardando triagem', condicao: 'A conferir' }, { tipo: 'Retorno ao galpão', data: data.data, origem: current.localizacao, destino: data.destino.trim(), contrato: current.contratoAtual, responsavel: data.responsavel.trim() });
+    return true;
   };
   const register = e => {
     e.preventDefault(); const data = new FormData(e.currentTarget);
@@ -134,12 +145,13 @@ export default function RfidWorkspace({ page, go }) {
   const active = ['Visão geral', 'Inventário', 'Cadastrar material', 'Identificação e movimentações', 'Retorno e triagem', 'Destinação sustentável', 'Configuração'].includes(page);
   if (!active) return null;
   return <div className="rfid-workspace">
+    {page === 'Retorno e triagem' && <TriageWorkspace equipment={equipment} onTriage={finishTriage} onReturn={receiveMaterial} onOpen={open} />}
     {page === 'Destinação sustentável' && <Disposal equipment={equipment} focusedId={disposalId} onSchedule={scheduleDisposal} go={go} />}
     {storageError && <div className="info-banner" role="alert">{storageError}</div>}
     {page === 'Visão geral' && <><div className="metric-grid">{[['Livres', equipment.filter(m => m.status === 'Livre').length], ['Em contratos', equipment.filter(m => m.status === 'Em contrato').length], ['Retornos pendentes de triagem', equipment.filter(m => m.status === 'Aguardando triagem').length], ['Etiqueta atual não informada', equipment.filter(m => !m.codigoEtiquetaAtual).length]].map(([label, value]) => <section className="card metric" key={label}>{demo}<strong>{value}</strong><p>{label}</p></section>)}</div><section className="card movement-card"><div className="section-heading"><h2>RFID opcional · últimas simulações</h2><button className="button primary" onClick={() => go('Identificação e movimentações')}>Localizar e movimentar</button></div><div className="timeline">{equipment.flatMap(m => m.eventos.map((e, i) => ({ ...e, material: m, index: i }))).filter(e => e.tipo === 'Leitura RFID simulada').sort((a, b) => b.data.localeCompare(a.data) || b.index - a.index).slice(0, 8).map((e, i) => <div className="timeline-event" key={i}><button className="material-link" onClick={() => open(e.material)}>{e.material.idInterno} · {e.rfidLido}</button><p>{e.data} · {e.destino}</p></div>)}{!equipment.some(m => m.eventos.some(e => e.tipo === 'Leitura RFID simulada')) && <p className="empty">Nenhuma simulação RFID registrada. Localize a etiqueta atual ETQ-002 para movimentar MAT-001. Vincular RFID é opcional.</p>}</div></section></>}
     {page === 'Inventário' && <section className="card"><div className="section-heading"><div><h2>Equipamentos individuais · identidade permanente</h2><p className="subtle">O número interno permanece igual em todo o ciclo de vida.</p></div><button className="button primary" onClick={() => go('Cadastrar material')}>Cadastrar equipamento</button></div><div className="filters"><label className="search-input"><input aria-label="Buscar equipamento" placeholder="Etiqueta atual, número interno, SISUP, RFID opcional, nome ou contrato..." value={query} onChange={e => setQuery(e.target.value)} /></label><label>Status<select value={filter} onChange={e => setFilter(e.target.value)}>{['Todos', 'Livre', 'Em contrato', 'Aguardando triagem', 'Danificado', 'Perdido', 'Manutenção', 'Aguardando destinação', 'Encaminhamento planejado', 'Etiqueta atual não informada', 'Sem RFID (opcional)'].map(s => <option key={s}>{s}</option>)}</select></label></div>{table(equipment.filter(m => search(m, query) && (filter === 'Todos' || (filter === 'Etiqueta atual não informada' ? !m.codigoEtiquetaAtual : filter === 'Sem RFID (opcional)' ? !m.rfidId : m.status === filter))))}</section>}
     {page === 'Cadastrar material' && <section className="card registration"><div className="section-heading"><h2>Cadastro único do equipamento</h2>{demo}</div><form className="registration-form" onSubmit={register}><label className="full">Descrição<input name="descricao" required pattern=".*\S.*" maxLength="120" /></label><label>Código SISUP simulado<input name="sisup" required pattern=".*\S.*" placeholder="SISUP-45010" /></label><label>Código da etiqueta atual<input name="etiqueta" required pattern=".*\S.*" placeholder="ETQ-005" /></label><label>Localização inicial<input name="localizacao" required pattern=".*\S.*" defaultValue="Galpão central" /></label><label>Responsável pela conferência<input name="responsavel" required pattern=".*\S.*" defaultValue="Lucas Silva" /></label><div className="form-hint full">Registre o código da etiqueta física existente, cujo formato ainda não foi confirmado. O número interno é estável e RFID é opcional para evolução futura. Pesquise antes de criar outro cadastro.</div><label className="checkbox-label full"><input type="checkbox" required />Confirmo a conferência demonstrativa: equipamento apto e livre.</label>{registrationMessage && <p className="rfid-feedback full" role="alert">{registrationMessage}</p>}<button className="button primary full">Cadastrar e abrir ficha</button></form></section>}
-    {(page === 'Identificação e movimentações' || page === 'Retorno e triagem') && <>
+    {page === 'Identificação e movimentações' && <>
       <section className="card"><div className="section-heading"><div><h2>Localizar pela etiqueta atual</h2><p className="subtle">Etiqueta física existente · formato ainda não confirmado</p></div>{demo}</div><form className="filters" onSubmit={locateCurrentTag}><label className="search-input"><input aria-label="Código da etiqueta atual para localizar" value={currentCode} onChange={e => { setCurrentCode(e.target.value); setLookupMessage(''); }} placeholder="Ex.: ETQ-002" required pattern=".*\S.*" /></label><button className="button primary">Localizar ficha</button></form>{lookupMessage && <p className="rfid-feedback" role="status">{lookupMessage}</p>}<div className="table-note">MAT-001 já possui ETQ-002 no cenário inicial. Saída e retorno usam a mesma ficha, sem exigir RFID.</div></section>
       <section className="card movement-card"><div className="section-heading"><h2>Pesquisar cadastro existente</h2></div><div className="filters"><label className="search-input"><input aria-label="Busca manual" value={query} onChange={e => setQuery(e.target.value)} placeholder="Etiqueta atual, MAT-001, SISUP, nome, contrato ou RFID opcional" /></label></div>{table(equipment.filter(m => search(m, query)))}</section>
       <section className="card reader-card movement-card"><div className="reader-symbol" aria-hidden="true">)))</div><div><span className="eyebrow">EVOLUÇÃO FUTURA · OPCIONAL</span><h2>RFID · leitura simulada</h2><p>Um RFID vinculado abre a mesma ficha. Não substitui a etiqueta atual e não contém o histórico.</p>{demo}</div><div className="reader-controls"><label>RFID fictício<select value={tag} onChange={e => { setTag(e.target.value); setUnknown(false); }}>{[...new Set(['RFID-1001', 'RFID-1002', 'RFID-1003', ...equipment.map(m => m.rfidId).filter(Boolean), 'RFID-DESCONHECIDO'])].map(t => <option key={t}>{t}</option>)}</select></label><button className="button secondary" onClick={read}>Simular leitura RFID</button></div></section>
