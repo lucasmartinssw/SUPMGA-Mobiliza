@@ -78,3 +78,6 @@ Os saldos agregados CAT do planejamento continuam demonstrativos e não são um 
 
 
 Em **Destinação sustentável**, os materiais de mobilizações aparecem em lista compacta com busca, origem e quantidades pendentes. Clicar no material abre um modal com destinos, orientações de recuperação e validação da entrega. Fechar ou pressionar Escape não grava nada; uma confirmação bem-sucedida fecha o modal, atualiza a lista e mostra o resultado.
+
+
+O custo de reposição não é solicitado na triagem operacional. Novas conferências registram `unitCost: null`; valores históricos são preservados. Reutilização e os indicadores quantitativos continuam funcionando sem custo. A estimativa financeira utiliza somente os valores já conhecidos, sem considerar ausência de custo como zero. Um cadastro financeiro específico para Suprimentos ainda não está implementado.
