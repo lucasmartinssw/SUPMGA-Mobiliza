@@ -50,3 +50,6 @@ Pontos de segregação e destinos são fictícios: metais e cabos, eletroeletrô
 ## Triagem guiada
 
 **Retorno e triagem** possui duas listas: **Aguardando triagem** e **Registrar retorno**. A busca aceita nome, número interno, etiqueta e contrato. Clique em **Iniciar triagem** no material recebido, escolha uma condição nos cartões e avance em **Revisar resultado**. Nenhum resultado é pré-selecionado. A etapa final mostra o efeito da escolha, pede data, responsável e confirmação antes de gravar. Materiais não reutilizáveis exigem classificação e seguem para os destinos sugeridos. O recebimento de material em contrato pode ser registrado diretamente na lista **Registrar retorno**, abrindo a avaliação na sequência; a ficha completa permanece acessível em **Consultar ficha e histórico**. A triagem guiada utiliza o mesmo histórico e armazenamento das fichas existentes.
+
+
+Na destinação, a classificação é sugerida automaticamente a partir de `tipoMaterial` do cadastro, quando válido, ou de palavras reconhecidas na descrição/categoria. Disjuntores sugerem eletroeletrônicos; metais/cabos e plásticos têm sugestões próprias. Referências explícitas a óleo/contaminação na descrição direcionam à avaliação especializada. O operador pode corrigir a sugestão, que não substitui a avaliação da condição física. Materiais não reconhecidos continuam exigindo seleção manual.
